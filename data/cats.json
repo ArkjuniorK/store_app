@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "name": "Lucky",
+    "type": "Liar",
+    "gender": "M"
+  },
+  {
+    "id": 2,
+    "name": "Luna",
+    "type": "Anggoran",
+    "gender": "F"
+  }
+]
