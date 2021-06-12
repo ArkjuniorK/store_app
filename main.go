@@ -33,15 +33,10 @@ func main() {
 		render.PlainText(w, r, "Welcome!")
 	})
 
-	// Routes from routes folder, here we actually didn't have to
-	// include the bracket at the end of function since the exported func
-	// itself already contain the chi.Router params inside
-	//
-	// dont know if it was a bug or something, I expect to pass an argument
-	// inside of the rts functions because it actually a function
-	// r.
-	// r.Route("/cats", routes.Cats)
-	r.Mount("/api", routes.Routes())
+	// move the api to "/api" endpoint to create more convienent
+	// way of managing the endpoint structure, this endpoint would
+	// used to access all api request to backend
+	r.Mount("/api", routes.Entry{}.Routes())
 
 	// serve the route
 	http.ListenAndServe(":3000", r)

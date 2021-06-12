@@ -10,15 +10,15 @@ import (
 )
 
 // type to hold the Routes() function
-// type Entry struct{}
+type Entry struct{}
 
-func Routes() chi.Router {
+func (e Entry) Routes() chi.Router {
 	// initiate new chi instance
 	r := chi.NewRouter()
 
 	// entry
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		render.PlainText(w, r, "Hello to API")
+		render.PlainText(w, r, "Welcome to API")
 	})
 
 	// Route for cats endpoint
