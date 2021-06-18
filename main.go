@@ -8,7 +8,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 
-	"github.com/ArkjuniorK/store_app/routes"
+	"github.com/ArkjuniorK/store_app/api"
+	"github.com/ArkjuniorK/store_app/static"
 )
 
 func main() {
@@ -33,10 +34,13 @@ func main() {
 		render.PlainText(w, r, "Welcome!")
 	})
 
-	// move the api to "/api" endpoint to create more convienent
+	// api endpoints to "/api" endpoint to create more convienent
 	// way of managing the endpoint structure, this endpoint would
 	// used to access all api request to backend
-	r.Mount("/api", routes.Entry{}.Routes())
+	r.Mount("/api", api.Entry{}.Routes())
+
+	// static endpoints to "/static" endpoint to manage static assets
+	r.Mount("/static", static.Entry{}.Routes())
 
 	// serve the route
 	http.ListenAndServe(":3000", r)
