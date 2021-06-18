@@ -8,12 +8,12 @@ package models
 import (
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/rs/xid"
 )
 
 // Cat type store an object for cat entity
 type Cat struct {
-	ID      uuid.UUID `json:"id"`
+	ID      xid.ID    `json:"id"`
 	Name    string    `json:"name"`
 	Variety string    `json:"variety"`
 	Gender  string    `json:"gender"`
