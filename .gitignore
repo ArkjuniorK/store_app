@@ -8,3 +8,27 @@ data/stuffs/
 # static folder
 static/cats/
 static/stuffs/
+
+# view folder
+view/node_modules
+view/.DS_Store
+view/dist
+
+# local env files
+view/.env.local
+view/.env.*.local
+
+# Log files
+view/npm-debug.log*
+view/yarn-debug.log*
+view/yarn-error.log*
+view/pnpm-debug.log*
+
+# Editor directories and files
+view/.idea
+view/.vscode
+view/*.suo
+view/*.ntvs*
+view/*.njsproj
+view/*.sln
+view/*.sw?
