@@ -14,7 +14,8 @@ import (
 // How to work:
 // - Get the file image form
 // - Resize the file image
-// - Save it as .png
+// - Save it as .webp
+// - Pass image filename via context to controller
 
 type Key int
 
