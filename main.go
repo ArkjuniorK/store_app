@@ -17,6 +17,9 @@ func main() {
 	// define the router
 	r := chi.NewRouter()
 
+	// working directory
+	// wd, _ := os.Getwd()
+
 	// base middleware stack
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -29,10 +32,23 @@ func main() {
 	// processing should be stopped.
 	r.Use(middleware.Timeout(60 * time.Second))
 
-	// base route
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		render.PlainText(w, r, "Welcome!")
-	})
+	// // base route
+	// r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+	// 	// render.PlainText(w, r, "Welcome!")
+	// 	filedir := http.Dir(filepath.Join(wd, "view"))
+	// 	rctx := chi.RouteContext(r.Context())
+	// 	pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
+	// 	fs := http.StripPrefix(pathPrefix, http.FileServer(filedir))
+	// 	fs.ServeHTTP(w, r)
+	// })
+
+	// r.Get("/source/*", func(w http.ResponseWriter, r *http.Request) {
+	// 	filedir := http.Dir(filepath.Join(wd, "source"))
+	// 	rctx := chi.RouteContext(r.Context())
+	// 	pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
+	// 	fs := http.StripPrefix(pathPrefix, http.FileServer(filedir))
+	// 	fs.ServeHTTP(w, r)
+	// })
 
 	// api endpoints to "/api" endpoint to create more convienent
 	// way of managing the endpoint structure, this endpoint would
