@@ -4,8 +4,8 @@
 // note that the controller did not include middleware function
 //
 // Todo
-// - Add pagination for all cats
-// - Search cat by name
+// - Add pagination for all cats [done]
+// - Zip code
 // - Search cat by variety
 // - Search cat by age
 // - Upload multiple image for cat [done]
@@ -18,7 +18,9 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -70,31 +72,67 @@ type Cat string
 // Response is JSON Array take from the models.Cats slices.
 // Accepted methods [GET]
 func (c Cat) GetCats(w http.ResponseWriter, r *http.Request) {
-	// initiate cats variable that would be hold cat entities
+	// initiate cats variable that would be hold cat entities,
 	// new would init an empty data inside referenced type
-	var cats *models.Cats = new(models.Cats)
-	var wd, _ = os.Getwd()
+	var (
+		cats       *models.Cats = new(models.Cats)
+		catWrapper [][]fs.FileInfo
+		wd, err    = os.Getwd()
+	)
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error get working directory"))
+		return
+	}
 
 	// get params from request
-	page, _ := strconv.ParseInt(chi.URLParam(r, "page"), 0, 8)
-	limit, _ := strconv.ParseInt(chi.URLParam(r, "limit"), 0, 8)
+	page, _ := strconv.ParseFloat(chi.URLParam(r, "page"), 64)
+	limit, _ := strconv.ParseFloat(chi.URLParam(r, "limit"), 64)
 
-	// create totalPage
-	println(page, limit)
-
-	// read cats.json file
+	// read cats directory
 	data, err := ioutil.ReadDir(wd + "/data/cats")
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("error reading cats"))
+		w.Write([]byte("error reading cats data"))
 		return
 	}
 
-	for _, v := range data {
+	// total page for pagination
+	totalPage := math.Ceil(float64(len(data)) / limit)
+
+	if page > totalPage {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("error page is bigger than total page"))
+		return
+	}
+
+	// loop through cats data and slice it into chunk
+	// that would be use to paginate cats data
+	for i := 0; i < len(data); i += int(limit) {
+
+		// length of data
+		length := i + int(limit)
+
+		// when length is bigger than len of data
+		// then assign length to len of data
+		// to avoid bound of length
+		if length > len(data) {
+			length = len(data)
+		}
+
+		// we slice the data into chuck and append it
+		// to catWrapper
+		wrapperChunk := data[i:length]
+		catWrapper = append(catWrapper, wrapperChunk)
+	}
+
+	// another loop to read all the cats file
+	for _, v := range catWrapper[int64(page)-1] {
 		var cat *models.Cat
 
-		// read the file
+		// read cat file
 		data, err := ioutil.ReadFile(wd + "/data/cats/" + v.Name())
 
 		if err != nil {
@@ -112,7 +150,6 @@ func (c Cat) GetCats(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// append the marshalled json to cats slices
 		*cats = append(*cats, cat)
 	}
 
@@ -148,6 +185,20 @@ func (c Cat) AddCat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// check for zip code
+	if cat.ZipCode == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("error zip code is required"))
+		return
+	}
+
+	// check for address
+	if cat.Address == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("error address is required"))
+		return
+	}
+
 	// generate an id for requsted body
 	// also with create and update key
 	cat.ID = xid.New()
@@ -174,9 +225,6 @@ func (c Cat) AddCat(w http.ResponseWriter, r *http.Request) {
 // Response is JSON Object take from models.Cat struct.
 // Accepted methods [GET]
 func (c Cat) GetCat(w http.ResponseWriter, r *http.Request) {
-	// initate cat variable
-	var cat *models.Cat
-
 	// get the params
 	id := chi.URLParam(r, "id")
 
@@ -189,11 +237,8 @@ func (c Cat) GetCat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// unmarshall the type of data to struct
-	json.Unmarshal(data, &cat)
-
 	// send struct type data as json to client
-	render.JSON(w, r, cat)
+	render.JSON(w, r, data)
 }
 
 // Controller for update cat entity at /cats/{id} endpoint.
@@ -204,7 +249,6 @@ func (c Cat) UpdateCat(w http.ResponseWriter, r *http.Request) {
 	var (
 		mcat  models.CatMap // store from file
 		mrcat models.CatMap // store from body
-		cat   *models.Cat   // store updated data
 	)
 
 	// get the requested id and body
@@ -212,7 +256,7 @@ func (c Cat) UpdateCat(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("error reading requested body"))
 		return
 	}
@@ -226,7 +270,7 @@ func (c Cat) UpdateCat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// unmarshall body and file to struct type
+	// unmarshall body and file to map type
 	if err = json.Unmarshal(body, &mrcat); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("error unmarshall requested body"))
@@ -272,16 +316,8 @@ func (c Cat) UpdateCat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// from []byte change again to struct
-	// so we could send the response to client
-	if err = json.Unmarshal(data, &cat); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("error marshal updated cat data"))
-		return
-	}
-
 	// send cat struct to client as json
-	render.JSON(w, r, cat)
+	render.JSON(w, r, data)
 }
 
 // Controller for delete cat entity based on id
