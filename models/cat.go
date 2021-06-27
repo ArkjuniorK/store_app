@@ -18,6 +18,8 @@ type Cat struct {
 	Variety string    `json:"variety"`
 	Gender  string    `json:"gender"`
 	Age     int16     `json:"age"`
+	Address string    `json:"address"`
+	ZipCode int16     `json:"zip_code"`
 	Create  time.Time `json:"created_at"`
 	Update  time.Time `json:"updated_at"`
 	Image   *Picture  `json:"image"`
