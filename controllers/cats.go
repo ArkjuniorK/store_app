@@ -5,9 +5,12 @@
 //
 // Todo
 // - Add pagination for all cats [done]
-// - Zip code
-// - Search cat by variety
-// - Search cat by age
+// - Zip code [done]
+// - Filter cat by zip code [done]
+// - Search cat by name using query [done]
+// - Filter cat by variety using query [done]
+// - Filter cat by gender using query
+// - Filter cat by age using query
 // - Upload multiple image for cat [done]
 // - Delete image by image ID [done]
 //
@@ -17,12 +20,13 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io/fs"
 	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -39,7 +43,8 @@ import (
 // interface would be use inside routes packages to access each controller
 // instead of using Cat struct
 type CatControllers interface {
-	// Controller to get all adopted cats
+	// Controller to get all cats that would be adopted.
+	// With pagination and filters
 	GetCats(w http.ResponseWriter, r *http.Request)
 
 	// Controller to add cat to be adopted
@@ -75,10 +80,12 @@ func (c Cat) GetCats(w http.ResponseWriter, r *http.Request) {
 	// initiate cats variable that would be hold cat entities,
 	// new would init an empty data inside referenced type
 	var (
-		cats       *models.Cats = new(models.Cats)
-		catWrapper [][]fs.FileInfo
-		wd, err    = os.Getwd()
+		cats        *models.Cats  = new(models.Cats)
+		catsWrapper []models.Cats // hold models.Cats as chunck
 	)
+
+	// get working directory
+	wd, err := os.Getwd()
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -90,8 +97,12 @@ func (c Cat) GetCats(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.ParseFloat(chi.URLParam(r, "page"), 64)
 	limit, _ := strconv.ParseFloat(chi.URLParam(r, "limit"), 64)
 
+	// query for filtering and searching cats
+	// type map
+	query := r.URL.Query()
+
 	// read cats directory
-	data, err := ioutil.ReadDir(wd + "/data/cats")
+	catsDir, err := ioutil.ReadDir(wd + "/data/cats")
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -100,7 +111,7 @@ func (c Cat) GetCats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// total page for pagination
-	totalPage := math.Ceil(float64(len(data)) / limit)
+	totalPage := math.Ceil(float64(len(catsDir)) / limit)
 
 	if page > totalPage {
 		w.WriteHeader(http.StatusBadRequest)
@@ -108,9 +119,198 @@ func (c Cat) GetCats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// first read all the file inside cat's data
+	// then set it to *cats
+	for i := 0; i < len(catsDir); i++ {
+
+		var cat models.Cat
+
+		// read each file
+		catData, err := ioutil.ReadFile(wd + "/data/cats/" + catsDir[i].Name())
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("error read cat data"))
+			return
+		}
+
+		// unmarshall the catData
+		err = json.Unmarshal(catData, &cat)
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("error unmarshal cat data"))
+			return
+		}
+
+		*cats = append(*cats, &cat)
+	}
+
+	// second filter the cat by it's zip code
+	// the query for zip_code would always present
+	// to make sure it easy to find adopt cat by location/region
+	catsByRegion, err := func(cats *models.Cats, zip []string) (*models.Cats, error) {
+		var catsWrapper models.Cats
+
+		// check the zip_code
+		// if it's not present in requested query
+		// send an error
+		if len(zip[0]) == 0 {
+			return nil, errors.New("error zip_code not present in request")
+		}
+
+		// process the filter here
+		// change the format of zip to int16
+		zipCode, err := strconv.ParseInt(zip[0], 0, 16)
+
+		if err != nil {
+			return nil, errors.New("error parse zip_code to int")
+		}
+
+		// loop the cats data to compare each
+		// cat zip_code to requested zip_code
+		// then append the filtered cat to catsWrapper
+		for i := 0; i < len(*cats); i++ {
+			if zipCode == int64((*cats)[i].ZipCode) {
+				catsWrapper = append(catsWrapper, (*cats)[i])
+			}
+		}
+
+		return &catsWrapper, nil
+	}(cats, query["zip_code"])
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	// third verify if query["name"] is enabled
+	// if it does then search for match cat name
+	// but it doesn't return cats param
+	catsByName := func(cats *models.Cats, name []string) *models.Cats {
+		// name is defined
+		// search the cat by given name
+		if len(name) != 0 {
+			// wrapper for cat name that match with the filter
+			var catsWrapper models.Cats
+
+			// set regexp for name
+			validName := regexp.MustCompile(name[0])
+
+			// loop the cats to get each detail data
+			// to compare the validName with cat name
+			for i := 0; i < len(*cats); i++ {
+				if validName.MatchString(strings.ToLower((*cats)[i].Name)) {
+					catsWrapper = append(catsWrapper, (*cats)[i])
+				}
+			}
+
+			return &catsWrapper
+		}
+
+		// when name is not defined
+		return cats
+	}(catsByRegion, query["name"])
+
+	// next filter the the catsByName
+	// with veriety if it defined/enabled
+	catsByVariety := func(cats *models.Cats, variety []string) *models.Cats {
+		// variety is defined
+		// then filter the cats
+		if len(variety) != 0 {
+			// wrapper for filtered cats
+			var catsWrapper models.Cats
+
+			// loop the cats to find the match variety
+			// then append it to catsWrapper so it could be returned
+			for i := 0; i < len(*cats); i++ {
+				if variety[0] == (*cats)[i].Variety {
+					catsWrapper = append(catsWrapper, (*cats)[i])
+				}
+			}
+
+			return &catsWrapper
+		}
+
+		// when variety is not defined
+		return cats
+	}(catsByName, query["variety"])
+
+	// then filter cats by it's gender if
+	// query["gender"] is defined
+	catsByGender := func(cats *models.Cats, gender []string) *models.Cats {
+		// filter by gender is defined
+		if len(gender) != 0 {
+			// wrapper for filtered cats
+			var catsWrapper models.Cats
+
+			// loop the cats to find the match gender
+			// then append it to catsWrapper so it could be returned
+			for i := 0; i < len(*cats); i++ {
+				if gender[0] == (*cats)[i].Gender {
+					catsWrapper = append(catsWrapper, (*cats)[i])
+				}
+			}
+
+			return &catsWrapper
+		}
+
+		// gender is not defined
+		return cats
+	}(catsByVariety, query["gender"])
+
+	// last filter the cats by age
+	// the query takes two value [min, max]
+	// so the logic would compare that ages is not more
+	// than the min and less than the max number
+	catsByAge, err := func(cats *models.Cats, age []string) (*models.Cats, error) {
+		// age is defined
+		if len(age) != 0 {
+			// wrapper for filtered cats
+			var catsWrapper models.Cats
+
+			// split the age to get the min and max value
+			splittedAge := strings.Split(age[0], ",")
+
+			// change the format of min (string) to int
+			min, err := strconv.ParseInt(splittedAge[0], 0, 16)
+
+			if err != nil {
+				return nil, errors.New("error parse min to int")
+			}
+
+			// change the format of max (string) to int
+			max, err := strconv.ParseInt(splittedAge[1], 0, 16)
+
+			if err != nil {
+				return nil, errors.New("error parse max to int")
+			}
+
+			// loop the cats data to get equivalent
+			// age of cats
+			for i := 0; i < len(*cats); i++ {
+				if min <= int64((*cats)[i].Age) && max >= int64((*cats)[i].Age) {
+					catsWrapper = append(catsWrapper, (*cats)[i])
+				}
+			}
+
+			return &catsWrapper, nil
+		}
+
+		// age is not defined
+		return cats, nil
+	}(catsByGender, query["age"])
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
 	// loop through cats data and slice it into chunk
 	// that would be use to paginate cats data
-	for i := 0; i < len(data); i += int(limit) {
+	for i := 0; i < len(*catsByAge); i += int(limit) {
 
 		// length of data
 		length := i + int(limit)
@@ -118,43 +318,18 @@ func (c Cat) GetCats(w http.ResponseWriter, r *http.Request) {
 		// when length is bigger than len of data
 		// then assign length to len of data
 		// to avoid bound of length
-		if length > len(data) {
-			length = len(data)
+		if length > len(*catsByAge) {
+			length = len(*catsByAge)
 		}
 
 		// we slice the data into chuck and append it
 		// to catWrapper
-		wrapperChunk := data[i:length]
-		catWrapper = append(catWrapper, wrapperChunk)
-	}
-
-	// another loop to read all the cats file
-	for _, v := range catWrapper[int64(page)-1] {
-		var cat *models.Cat
-
-		// read cat file
-		data, err := ioutil.ReadFile(wd + "/data/cats/" + v.Name())
-
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("error reading cat data"))
-			return
-		}
-
-		// marshall json data inside file to struct
-		err = json.Unmarshal(data, &cat)
-
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("error unmarshal cat"))
-			return
-		}
-
-		*cats = append(*cats, cat)
+		wrapperChunk := (*catsByAge)[i:length]
+		catsWrapper = append(catsWrapper, wrapperChunk)
 	}
 
 	// send the response to client
-	render.JSON(w, r, cats)
+	render.JSON(w, r, catsWrapper[int(page)-1])
 }
 
 // Controller for post new cat at "/cats" endpoint.
@@ -284,15 +459,15 @@ func (c Cat) UpdateCat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// using map make us easy to compare each field
-	// since it could using for loop
-	for i, _ := range mcat {
+	// since it could use for loop
+	for k := range mcat {
 		// check for requested field
 		// if it's nil then do not loop
-		if mrcat[i] != nil {
+		if mrcat[k] != nil {
 			// check if the field in cat and rcat isn't same
 			// if condition fulfilled, do the update inside
-			if mcat[i] != mrcat[i] {
-				mcat[i] = mrcat[i]
+			if mcat[k] != mrcat[k] {
+				mcat[k] = mrcat[k]
 			}
 		}
 	}
